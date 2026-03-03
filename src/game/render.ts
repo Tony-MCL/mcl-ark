@@ -23,6 +23,13 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
   for (const b of world.bricks) {
     if (!b.alive) continue;
 
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "rgba(255,0,0,1)";
+    roundRect(ctx, b.x, b.y, b.w, b.h, 10);
+    ctx.fill();
+    ctx.restore();
+
     // Stronger: 0..1 over 120ms
     const flash = Math.max(0, Math.min(1, b.hitFlash / 0.12));
 
