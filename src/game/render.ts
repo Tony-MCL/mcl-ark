@@ -19,6 +19,32 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
   ctx.fillStyle = g2;
   ctx.fillRect(0, 0, W, H);
 
+  // Arena frame (visual)
+  {
+    const left = (world as any).width ? CFG.arenaInsetX : 26;
+    const right = world.width - CFG.arenaInsetX;
+    const top = CFG.arenaInsetTop;
+    const bottom = world.height - CFG.arenaInsetBottom;
+  
+    ctx.save();
+  
+    // outer glow
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = 5;
+    roundRect(ctx, left - 8, top - 8, (right - left) + 16, (bottom - top) + 16, CFG.arenaWallRadius + 10);
+    ctx.stroke();
+  
+    // main frame
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = "rgba(255,255,255,0.16)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, left, top, (right - left), (bottom - top), CFG.arenaWallRadius);
+    ctx.stroke();
+  
+    ctx.restore();
+  }
+
   // Bricks
   for (const b of world.bricks) {
     // ✅ Draw dead bricks only while they are flashing
