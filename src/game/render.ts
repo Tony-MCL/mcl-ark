@@ -21,25 +21,25 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
 
   // Bricks
   for (const b of world.bricks) {
-    if (!b.alive) continue;
+    // ✅ Draw dead bricks only while they are flashing
+    if (!b.alive && b.hitFlash <= 0) continue;
 
-    ctx.save();
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = "rgba(255,0,0,1)";
-    roundRect(ctx, b.x, b.y, b.w, b.h, 10);
-    ctx.fill();
-    ctx.restore();
+    // 0..1 over 140ms (slightly longer so you always see it)
+    const flash = Math.max(0, Math.min(1, b.hitFlash / 0.14));
 
-    // Stronger: 0..1 over 120ms
-    const flash = Math.max(0, Math.min(1, b.hitFlash / 0.12));
+    // If brick is already "dead", draw it as a fading ghost flash (only the effect)
+    const ghost = b.alive ? 1 : 0.85;
 
     // Base glass
     const baseA0 = 0.18;
     const baseA1 = 0.06;
 
-    // Flash boost (more visible)
-    const boostA = baseA0 + flash * 0.55; // up to ~0.73
-    const boostB = baseA1 + flash * 0.40; // up to ~0.46
+    // Flash boost (visible)
+    const boostA = baseA0 + flash * 0.55;
+    const boostB = baseA1 + flash * 0.40;
+
+    ctx.save();
+    ctx.globalAlpha = ghost;
 
     const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
     grad.addColorStop(0, `rgba(255,255,255,${boostA.toFixed(3)})`);
@@ -49,16 +49,17 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
     roundRect(ctx, b.x, b.y, b.w, b.h, 10);
     ctx.fill();
 
-    // Border becomes brighter on hit
+    // Border brighter on hit
     ctx.strokeStyle = `rgba(255,255,255,${(0.12 + flash * 0.55).toFixed(3)})`;
     ctx.lineWidth = 1;
     roundRect(ctx, b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 10);
     ctx.stroke();
 
-    // Optional "shine streak" so the eye catches it immediately
+    // Shine streak (eye-catcher)
     if (flash > 0) {
       ctx.save();
-      ctx.globalAlpha = 0.55 * flash;
+      ctx.globalAlpha = ghost * (0.70 * flash);
+
       const sx = b.x + b.w * 0.10;
       const sy = b.y + b.h * 0.22;
       const sw = b.w * 0.80;
@@ -74,6 +75,8 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
       ctx.fill();
       ctx.restore();
     }
+
+    ctx.restore();
   }
 
   // Paddle
