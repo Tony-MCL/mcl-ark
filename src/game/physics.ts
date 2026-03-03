@@ -1,5 +1,5 @@
 import { CFG } from "./config";
-import type { Ball, Brick, Paddle, Vec2 } from "./types";
+import type { Ball, Paddle, Vec2 } from "./types";
 
 export function clamp(v: number, a: number, b: number) {
   return Math.max(a, Math.min(b, v));
@@ -48,28 +48,65 @@ export function bounceOffPaddle(ball: Ball, paddle: Paddle) {
   ensureInterestingVelocity(ball);
 }
 
-export function bounceOffBrick(ball: Ball, brick: Brick) {
-  // Simple side resolution based on penetration direction
-  const prev = { x: ball.p.x - ball.v.x * 0.016, y: ball.p.y - ball.v.y * 0.016 };
+/**
+ * Resolve circle-vs-rect collision robustly:
+ * - returns a collision normal (nx, ny)
+ * - pushes the ball out of the rectangle along the normal
+ * - reflects velocity around the normal
+ *
+ * This reduces "edge tunneling" artifacts and makes corner hits behave.
+ */
+export function resolveCircleRectCollision(
+  ball: Ball,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number
+): boolean {
+  // Closest point on rect to circle center
+  const cx = clamp(ball.p.x, rx, rx + rw);
+  const cy = clamp(ball.p.y, ry, ry + rh);
 
-  const left = brick.x;
-  const right = brick.x + brick.w;
-  const top = brick.y;
-  const bottom = brick.y + brick.h;
+  let dx = ball.p.x - cx;
+  let dy = ball.p.y - cy;
 
-  const wasLeft = prev.x < left;
-  const wasRight = prev.x > right;
-  const wasAbove = prev.y < top;
-  const wasBelow = prev.y > bottom;
+  const distSq = dx * dx + dy * dy;
+  const r = ball.r;
 
-  if ((wasLeft && ball.p.x >= left) || (wasRight && ball.p.x <= right)) {
-    ball.v.x *= -1;
-  } else if ((wasAbove && ball.p.y >= top) || (wasBelow && ball.p.y <= bottom)) {
-    ball.v.y *= -1;
+  if (distSq > r * r) return false;
+
+  let nx = 0;
+  let ny = 0;
+
+  // If center is not exactly on edge point, normal is from closest point to center
+  const dist = Math.sqrt(distSq);
+  if (dist > 1e-8) {
+    nx = dx / dist;
+    ny = dy / dist;
   } else {
-    // Fallback
-    ball.v.y *= -1;
+    // Center is exactly on/inside corner/edge numerically -> pick the smallest penetration axis
+    const toLeft = Math.abs(ball.p.x - rx);
+    const toRight = Math.abs((rx + rw) - ball.p.x);
+    const toTop = Math.abs(ball.p.y - ry);
+    const toBottom = Math.abs((ry + rh) - ball.p.y);
+
+    const min = Math.min(toLeft, toRight, toTop, toBottom);
+    if (min === toLeft) { nx = -1; ny = 0; }
+    else if (min === toRight) { nx = 1; ny = 0; }
+    else if (min === toTop) { nx = 0; ny = -1; }
+    else { nx = 0; ny = 1; }
   }
 
+  // Push ball out of rect along normal
+  const push = (r - dist) + 0.5; // 0.5px safety margin in world units
+  ball.p.x += nx * push;
+  ball.p.y += ny * push;
+
+  // Reflect velocity around normal: v' = v - 2*(v·n)*n
+  const dot = ball.v.x * nx + ball.v.y * ny;
+  ball.v.x = ball.v.x - 2 * dot * nx;
+  ball.v.y = ball.v.y - 2 * dot * ny;
+
   ensureInterestingVelocity(ball);
+  return true;
 }
