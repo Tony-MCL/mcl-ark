@@ -152,7 +152,7 @@ export function createEngine() {
           br.hp -= 1;
           if (br.hp <= 0) br.alive = false;
 
-          br.hitFlash = 0.10; // subtle flash
+          br.hitFlash = 0.60; // subtle flash
           world.score += 10;
 
           const newSpeed = Math.hypot(ball.v.x, ball.v.y) + CFG.speedRampPerHit;
