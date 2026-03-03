@@ -24,10 +24,10 @@ export const CFG = {
   minAbsVY: 160,
 
   // Bricks
-  brickCols: 12,
-  brickRows: 6,
-  brickGap: 10,
-  brickTop: 72,
-  brickSidePad: 48,
-  brickH: 26
+  brickCols: 11,
+  brickRows: 7,
+  brickGap: 4,
+  brickTop: 18,
+  brickSidePad: 10,
+  brickH: 16
 } as const;
