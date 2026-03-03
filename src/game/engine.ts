@@ -16,11 +16,9 @@ export function createEngine() {
   let dpr = 1;
 
   let settings: Settings = { sound: true, haptics: false, retroOverlay: true };
-
   const sfx = createSfx(() => settings.sound);
 
   let hudListener: HudListener = () => {};
-
   const world: World = makeWorld();
 
   let lastT = 0;
@@ -49,7 +47,8 @@ export function createEngine() {
       level: 1,
       paused: false,
       gameOver: false,
-      levelClearFx: 0
+      levelClearFx: 0,
+      pendingReset: 0
     };
   }
 
@@ -107,8 +106,20 @@ export function createEngine() {
 
   function tickFx(dt: number) {
     world.levelClearFx = Math.max(0, world.levelClearFx - dt);
+
+    // Brick flashes tick down
     for (const b of world.bricks) {
       if (b.hitFlash > 0) b.hitFlash = Math.max(0, b.hitFlash - dt);
+    }
+
+    // If we are waiting to rebuild after clear
+    if (world.pendingReset > 0) {
+      world.pendingReset = Math.max(0, world.pendingReset - dt);
+      if (world.pendingReset === 0) {
+        world.bricks = makeLevel1();
+        resetBall(true);
+        emitHud();
+      }
     }
   }
 
@@ -123,6 +134,9 @@ export function createEngine() {
 
     for (let i = 0; i < steps; i++) {
       if (world.paused || world.gameOver) return;
+
+      // If we are in "level clear delay", freeze gameplay (let FX render)
+      if (world.pendingReset > 0) return;
 
       ball.p.x += ball.v.x * subDt;
       ball.p.y += ball.v.y * subDt;
@@ -147,12 +161,16 @@ export function createEngine() {
       // Bricks: max 1 per micro-step
       for (const br of world.bricks) {
         if (!br.alive) continue;
+
         const hitB = resolveCircleRectCollision(ball, br.x, br.y, br.w, br.h);
         if (hitB) {
           br.hp -= 1;
+
+          // ✅ Give flash BEFORE/EVEN IF brick dies
+          br.hitFlash = 0.14;
+
           if (br.hp <= 0) br.alive = false;
 
-          br.hitFlash = 2.0; // subtle flash
           world.score += 10;
 
           const newSpeed = Math.hypot(ball.v.x, ball.v.y) + CFG.speedRampPerHit;
@@ -181,13 +199,12 @@ export function createEngine() {
         return;
       }
 
-      // Level clear
+      // Level clear: delay rebuild so last-hit flash is visible
       if (world.bricks.every(b => !b.alive)) {
         world.levelClearFx = 0.35;
+        world.pendingReset = 0.22; // short pause to show FX
+        world.ball.stuckToPaddle = true; // freeze ball cleanly
         sfx.levelClear();
-
-        world.bricks = makeLevel1();
-        resetBall(true);
         emitHud();
         return;
       }
@@ -230,11 +247,10 @@ export function createEngine() {
       c.setPointerCapture(e.pointerId);
       onPointerMove(e.clientX, getRect());
 
-      // Unlock audio on user gesture
       await sfx.unlock();
 
-      // Launch from paddle on first touch
-      if (world.ball.stuckToPaddle && !world.paused && !world.gameOver) {
+      // If stuck, launch on first touch (but not during pending reset)
+      if (world.ball.stuckToPaddle && world.pendingReset === 0 && !world.paused && !world.gameOver) {
         world.ball.stuckToPaddle = false;
         ensureInterestingVelocity(world.ball);
       }
