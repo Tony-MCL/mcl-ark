@@ -3,6 +3,7 @@ import { makeLevel1 } from "./level";
 import { bounceOffPaddle, ensureInterestingVelocity, resolveCircleRectCollision, setSpeed } from "./physics";
 import { render } from "./render";
 import type { HudState, Settings, World } from "./types";
+import { createSfx } from "./sound";
 
 type HudListener = (h: HudState) => void;
 
@@ -16,13 +17,15 @@ export function createEngine() {
 
   let settings: Settings = { sound: true, haptics: false, retroOverlay: true };
 
+  const sfx = createSfx(() => settings.sound);
+
   let hudListener: HudListener = () => {};
 
   const world: World = makeWorld();
 
   let lastT = 0;
   let accumulator = 0;
-  const FIXED_DT = 1 / 120; // stable, smooth
+  const FIXED_DT = 1 / 120;
 
   let pointerActive = false;
   let pointerX = CFG.worldW / 2;
@@ -45,7 +48,8 @@ export function createEngine() {
       lives: 3,
       level: 1,
       paused: false,
-      gameOver: false
+      gameOver: false,
+      levelClearFx: 0
     };
   }
 
@@ -92,7 +96,6 @@ export function createEngine() {
 
   function applyInput() {
     const target = pointerX - world.paddle.w / 2;
-    // Slight smoothing so it feels “premium”
     world.paddle.x += (target - world.paddle.x) * 0.35;
     world.paddle.x = Math.max(0, Math.min(world.width - world.paddle.w, world.paddle.x));
 
@@ -102,44 +105,46 @@ export function createEngine() {
     }
   }
 
-  /**
-   * Move the ball using micro-steps when needed to prevent tunneling through thin edges.
-   * This is the main fix for "ball goes through brick on the edge and hits two".
-   */
+  function tickFx(dt: number) {
+    world.levelClearFx = Math.max(0, world.levelClearFx - dt);
+    for (const b of world.bricks) {
+      if (b.hitFlash > 0) b.hitFlash = Math.max(0, b.hitFlash - dt);
+    }
+  }
+
   function moveBallWithMicroSteps(dt: number) {
     const ball = world.ball;
 
-    // Determine number of substeps based on travel distance vs radius
     const speed = Math.hypot(ball.v.x, ball.v.y);
     const travel = speed * dt;
-    const maxStep = Math.max(2, ball.r * 0.75); // world units per micro-step
+    const maxStep = Math.max(2, ball.r * 0.75);
     const steps = Math.max(1, Math.min(10, Math.ceil(travel / maxStep)));
     const subDt = dt / steps;
 
     for (let i = 0; i < steps; i++) {
-      // Stop if paused/gameover mid-loop
       if (world.paused || world.gameOver) return;
 
-      // Move
       ball.p.x += ball.v.x * subDt;
       ball.p.y += ball.v.y * subDt;
 
       // Walls
-      if (ball.p.x - ball.r < 0) { ball.p.x = ball.r; ball.v.x *= -1; }
-      if (ball.p.x + ball.r > world.width) { ball.p.x = world.width - ball.r; ball.v.x *= -1; }
-      if (ball.p.y - ball.r < 0) { ball.p.y = ball.r; ball.v.y *= -1; }
+      let wallHit = false;
+      if (ball.p.x - ball.r < 0) { ball.p.x = ball.r; ball.v.x *= -1; wallHit = true; }
+      if (ball.p.x + ball.r > world.width) { ball.p.x = world.width - ball.r; ball.v.x *= -1; wallHit = true; }
+      if (ball.p.y - ball.r < 0) { ball.p.y = ball.r; ball.v.y *= -1; wallHit = true; }
+      if (wallHit) sfx.wallHit();
 
-      // Paddle (only if moving downwards)
+      // Paddle
       if (ball.v.y > 0) {
         const hitP = resolveCircleRectCollision(ball, world.paddle.x, world.paddle.y, world.paddle.w, world.paddle.h);
         if (hitP) {
-          // Paddle bounce should be angle-controlled (Arkanoid feel), not generic reflect
           ball.p.y = world.paddle.y - ball.r - 0.5;
           bounceOffPaddle(ball, world.paddle);
+          sfx.paddleHit();
         }
       }
 
-      // Bricks: handle at most ONE brick per micro-step
+      // Bricks: max 1 per micro-step
       for (const br of world.bricks) {
         if (!br.alive) continue;
         const hitB = resolveCircleRectCollision(ball, br.x, br.y, br.w, br.h);
@@ -147,13 +152,14 @@ export function createEngine() {
           br.hp -= 1;
           if (br.hp <= 0) br.alive = false;
 
+          br.hitFlash = 0.10; // subtle flash
           world.score += 10;
 
-          // Mild speed ramp per hit
           const newSpeed = Math.hypot(ball.v.x, ball.v.y) + CFG.speedRampPerHit;
           setSpeed(ball, newSpeed);
           ensureInterestingVelocity(ball);
 
+          sfx.brickHit();
           emitHud();
           break;
         }
@@ -163,6 +169,8 @@ export function createEngine() {
       if (ball.p.y - ball.r > world.height) {
         world.lives -= 1;
         emitHud();
+        sfx.lifeLost();
+
         if (world.lives <= 0) {
           world.gameOver = true;
           world.paused = true;
@@ -173,8 +181,11 @@ export function createEngine() {
         return;
       }
 
-      // Level clear (MVP: restart level)
+      // Level clear
       if (world.bricks.every(b => !b.alive)) {
+        world.levelClearFx = 0.35;
+        sfx.levelClear();
+
         world.bricks = makeLevel1();
         resetBall(true);
         emitHud();
@@ -184,6 +195,7 @@ export function createEngine() {
   }
 
   function step(dt: number) {
+    tickFx(dt);
     if (world.paused || world.gameOver) return;
 
     applyInput();
@@ -207,19 +219,21 @@ export function createEngine() {
     }
 
     render(ctx, world, settings, dpr);
-
     raf = requestAnimationFrame(frame);
   }
 
   function attachEvents(c: HTMLCanvasElement) {
     const getRect = () => c.getBoundingClientRect();
 
-    const onPointerDown = (e: PointerEvent) => {
+    const onPointerDown = async (e: PointerEvent) => {
       pointerActive = true;
       c.setPointerCapture(e.pointerId);
       onPointerMove(e.clientX, getRect());
 
-      // If stuck, launch on first touch
+      // Unlock audio on user gesture
+      await sfx.unlock();
+
+      // Launch from paddle on first touch
       if (world.ball.stuckToPaddle && !world.paused && !world.gameOver) {
         world.ball.stuckToPaddle = false;
         ensureInterestingVelocity(world.ball);
@@ -236,7 +250,6 @@ export function createEngine() {
       try { c.releasePointerCapture(e.pointerId); } catch {}
     };
 
-    // Two-finger tap to pause/resume
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length >= 2) {
         if (!twoFingerDown) {
@@ -245,9 +258,7 @@ export function createEngine() {
         }
       }
     };
-    const onTouchEnd = () => {
-      if (twoFingerDown) twoFingerDown = false;
-    };
+    const onTouchEnd = () => { if (twoFingerDown) twoFingerDown = false; };
 
     c.addEventListener("pointerdown", onPointerDown);
     c.addEventListener("pointermove", onPointerMoveEv);
@@ -280,14 +291,12 @@ export function createEngine() {
 
     settings = nextSettings;
 
-    // Resize for DPR
     dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
     const cssW = canvas.clientWidth;
     const cssH = canvas.clientHeight;
     canvas.width = Math.floor(cssW * dpr);
     canvas.height = Math.floor(cssH * dpr);
 
-    // Fit world into canvas
     ctx.setTransform(canvas.width / world.width, 0, 0, canvas.height / world.height, 0, 0);
 
     detach?.();
@@ -297,7 +306,6 @@ export function createEngine() {
     emitHud();
     raf = requestAnimationFrame(frame);
 
-    // On resize: keep it stable
     const onResize = () => {
       if (!canvas || !ctx) return;
       dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
