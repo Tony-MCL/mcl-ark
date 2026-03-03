@@ -1,14 +1,12 @@
-import { CFG } from "./config";
 import type { Settings, World } from "./types";
 
 export function render(ctx: CanvasRenderingContext2D, world: World, settings: Settings, dpr: number) {
   const W = world.width;
   const H = world.height;
 
-  // Background
   ctx.clearRect(0, 0, W, H);
 
-  // Subtle “coffee + neon” glow
+  // Background glow (coffee + hint neon)
   const g1 = ctx.createRadialGradient(W * 0.25, H * 0.15, 10, W * 0.25, H * 0.15, W * 0.9);
   g1.addColorStop(0, "rgba(211,139,61,0.16)");
   g1.addColorStop(1, "rgba(0,0,0,0)");
@@ -24,14 +22,20 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
   // Bricks
   for (const b of world.bricks) {
     if (!b.alive) continue;
+
+    const flash = Math.max(0, Math.min(1, b.hitFlash / 0.10)); // 0..1 over 0.10s
+    const boostA = 0.18 + flash * 0.22;
+    const boostB = 0.06 + flash * 0.14;
+
     const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
-    grad.addColorStop(0, "rgba(255,255,255,0.18)");
-    grad.addColorStop(1, "rgba(255,255,255,0.06)");
+    grad.addColorStop(0, `rgba(255,255,255,${boostA.toFixed(3)})`);
+    grad.addColorStop(1, `rgba(255,255,255,${boostB.toFixed(3)})`);
     ctx.fillStyle = grad;
+
     roundRect(ctx, b.x, b.y, b.w, b.h, 10);
     ctx.fill();
 
-    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.strokeStyle = `rgba(255,255,255,${(0.10 + flash * 0.20).toFixed(3)})`;
     ctx.lineWidth = 1;
     roundRect(ctx, b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 10);
     ctx.stroke();
@@ -64,6 +68,16 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
   if (settings.retroOverlay) {
     drawScanlines(ctx, W, H, dpr);
     drawVignette(ctx, W, H);
+  }
+
+  // Level clear flash (extra juice here)
+  if (world.levelClearFx > 0) {
+    const t = Math.max(0, Math.min(1, world.levelClearFx / 0.35));
+    const a = 0.28 * t;
+    ctx.save();
+    ctx.fillStyle = `rgba(211,139,61,${a.toFixed(3)})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
   }
 
   // Paused overlay
