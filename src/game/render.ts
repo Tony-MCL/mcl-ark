@@ -1,3 +1,4 @@
+import { CFG } from "./config";
 import type { Settings, World } from "./types";
 
 export function render(ctx: CanvasRenderingContext2D, world: World, settings: Settings, dpr: number) {
