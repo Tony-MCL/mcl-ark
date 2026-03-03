@@ -19,7 +19,8 @@ export function makeLevel1(): Brick[] {
         w: brickW,
         h: CFG.brickH,
         hp: 1,
-        alive: true
+        alive: true,
+        hitFlash: 0
       });
     }
   }
