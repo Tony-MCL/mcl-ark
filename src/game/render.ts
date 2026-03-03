@@ -23,9 +23,16 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
   for (const b of world.bricks) {
     if (!b.alive) continue;
 
-    const flash = Math.max(0, Math.min(1, b.hitFlash / 0.10)); // 0..1 over 0.10s
-    const boostA = 0.18 + flash * 0.22;
-    const boostB = 0.06 + flash * 0.14;
+    // Stronger: 0..1 over 120ms
+    const flash = Math.max(0, Math.min(1, b.hitFlash / 0.12));
+
+    // Base glass
+    const baseA0 = 0.18;
+    const baseA1 = 0.06;
+
+    // Flash boost (more visible)
+    const boostA = baseA0 + flash * 0.55; // up to ~0.73
+    const boostB = baseA1 + flash * 0.40; // up to ~0.46
 
     const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
     grad.addColorStop(0, `rgba(255,255,255,${boostA.toFixed(3)})`);
@@ -35,10 +42,31 @@ export function render(ctx: CanvasRenderingContext2D, world: World, settings: Se
     roundRect(ctx, b.x, b.y, b.w, b.h, 10);
     ctx.fill();
 
-    ctx.strokeStyle = `rgba(255,255,255,${(0.10 + flash * 0.20).toFixed(3)})`;
+    // Border becomes brighter on hit
+    ctx.strokeStyle = `rgba(255,255,255,${(0.12 + flash * 0.55).toFixed(3)})`;
     ctx.lineWidth = 1;
     roundRect(ctx, b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 10);
     ctx.stroke();
+
+    // Optional "shine streak" so the eye catches it immediately
+    if (flash > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.55 * flash;
+      const sx = b.x + b.w * 0.10;
+      const sy = b.y + b.h * 0.22;
+      const sw = b.w * 0.80;
+      const sh = b.h * 0.18;
+
+      const shine = ctx.createLinearGradient(sx, sy, sx + sw, sy);
+      shine.addColorStop(0, "rgba(255,255,255,0)");
+      shine.addColorStop(0.5, "rgba(255,255,255,1)");
+      shine.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = shine;
+
+      roundRect(ctx, sx, sy, sw, sh, sh * 0.5);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   // Paddle
@@ -117,7 +145,12 @@ function drawScanlines(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 
 function drawVignette(ctx: CanvasRenderingContext2D, W: number, H: number) {
   ctx.save();
-  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.2, W / 2, H / 2, Math.max(W, H) * 0.75);
+  const g = ctx.createRadialGradient(
+    W / 2, H / 2,
+    Math.min(W, H) * 0.2,
+    W / 2, H / 2,
+    Math.max(W, H) * 0.75
+  );
   g.addColorStop(0, "rgba(0,0,0,0)");
   g.addColorStop(1, "rgba(0,0,0,0.35)");
   ctx.fillStyle = g;
