@@ -143,9 +143,29 @@ export function createEngine() {
 
       // Walls
       let wallHit = false;
-      if (ball.p.x - ball.r < 0) { ball.p.x = ball.r; ball.v.x *= -1; wallHit = true; }
-      if (ball.p.x + ball.r > world.width) { ball.p.x = world.width - ball.r; ball.v.x *= -1; wallHit = true; }
-      if (ball.p.y - ball.r < 0) { ball.p.y = ball.r; ball.v.y *= -1; wallHit = true; }
+
+      const left = 26;
+      const right = world.width - 26;
+      const top = 22;
+      
+      if (ball.p.x - ball.r < left) {
+        ball.p.x = left + ball.r;
+        ball.v.x *= -1;
+        wallHit = true;
+      }
+      
+      if (ball.p.x + ball.r > right) {
+        ball.p.x = right - ball.r;
+        ball.v.x *= -1;
+        wallHit = true;
+      }
+      
+      if (ball.p.y - ball.r < top) {
+        ball.p.y = top + ball.r;
+        ball.v.y *= -1;
+        wallHit = true;
+      }
+      
       if (wallHit) sfx.wallHit();
 
       // Paddle
