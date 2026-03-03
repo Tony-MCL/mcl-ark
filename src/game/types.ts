@@ -35,6 +35,9 @@ export type Brick = {
   h: number;
   hp: number; // 1 for MVP
   alive: boolean;
+
+  // FX
+  hitFlash: number; // seconds remaining
 };
 
 export type World = {
@@ -48,4 +51,7 @@ export type World = {
   level: number;
   paused: boolean;
   gameOver: boolean;
+
+  // FX
+  levelClearFx: number; // seconds remaining
 };
